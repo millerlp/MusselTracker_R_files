@@ -4,31 +4,35 @@
 # making small interpolations for small gaps (less than 30 seconds) etc. 
 # Author: Luke Miller Jul 9, 2015
 ###############################################################################
-require(zoo)
 require(RColorBrewer)
-require(signal)
-require(zoo)
+require(signal) # For low-pass filtering
+require(zoo) # For merging time series
 
 Sys.setenv(TZ = 'PST8PDT')	# Set the time zone for the mussel tracker data
-Sys.getenv('TZ')
+Sys.getenv('TZ') # Report back to show that time zone setting worked
+
 
 ## Show fractional seconds when printing to terminal. This still often doesn't
 ## properly show the fractional seconds when displaying the formatted time
 options(digit.secs = 6, digits = 12) 
 
+# Enter the serial number of the board files you want to process below:
+##########################################
 board = 'SN14'
-
-# Specify a start and end time cutoff for the dataset. The plates were 
-# deployed in the field by 2015-07-15 7:30PDT, prior points are in the water table
-cutoffstart = as.POSIXct('2015-07-15 0:00:00', tz = 'PST8PDT')
-cutoffend = as.POSIXct('2015-08-06 09:20', tz = 'PST8PDT')
+##########################################
+# This assumes that there will be a folder of the same name (SN14 for example)
+# in which the script will find all of the files. Specify the path to the 
+# directory below.
 
 # Specify the directory holding the field data files
 fdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/Field_data/"
 # Specify the directory holding the thermocouple calibration data file
 tcdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/Thermocouple_calibrations/20150630_calibrations/"
 
-
+# Specify a start and end time cutoff for the dataset. The plates were 
+# deployed in the field by 2015-07-15 7:30PDT, prior points are in the water table
+cutoffstart = as.POSIXct('2015-07-15 0:00:00', tz = 'PST8PDT')
+cutoffend = as.POSIXct('2015-08-06 09:20', tz = 'PST8PDT')
 
 fname1 = paste0(fdir,board)
 fnames = dir(fname1, pattern = '*.csv', full.names = TRUE)
