@@ -7,7 +7,7 @@
 
 ######################################################
 # Specify which board and mussel you want to work with here:
-mussel = "1" # Specify the mussel, either 1 or 2, as a string
+mussel = "2" # Specify the mussel, either 1 or 2, as a string
 sn = "SN01"	# Specify the board serial number
 #####################################################
 
@@ -56,6 +56,7 @@ plot(df$a.x, df$a.y, type = 'p',
 #		ylim = c(-1,1),
 		asp = 1,
 		las = 1)
+points(df$a.x[1:1000], df$a.y[1:1000], col = 'blue')
 grid()
 
 # Y vs Z
@@ -64,6 +65,7 @@ plot(df$a.y, df$a.z, type = 'p',
 #		ylim = c(-1,1),
 		asp = 1,
 		las = 1)
+points(df$a.y[1:1000], df$a.z[1:1000], col = 'blue')
 grid()
 
 # X vs Z
@@ -72,16 +74,20 @@ plot(df$a.x, df$a.y, type = 'p',
 #		ylim = c(-1,1),
 		asp = 1,
 		las = 1)
+points(df$a.x[1:1000], df$a.z[1:1000], col = 'blue')
 grid()
 
 # Mag X vs Y
 plot(df$m.x, df$m.y, type = 'p', asp = 1, las = 1)
+points(df$m.x[1:1000], df$m.y[1:1000], col = 'blue')
 grid()
 # Mag Y vs Z
 plot(df$m.y, df$m.z, type = 'p', asp = 1, las = 1)
+points(df$m.y[1:1000], df$m.z[1:1000], col = 'blue')
 grid()
 # Mag X vs Z
 plot(df$m.x, df$m.z, type = 'p', asp = 1, las = 1)
+points(df$m.x[1:1000], df$m.z[1:1000], col = 'blue')
 grid()
 
 ##################################################################
@@ -109,12 +115,25 @@ filterPoints = function(dataF, axisA = 'a.x', axisB = 'a.y'){
 	plot(dataF[,axisA],dataF[,axisB], type = 'p', asp = 1, las = 1,
 			xlab = axisA,
 			ylab = axisB)
+	points(dataF[1:1000,axisA],dataF[1:1000,axisB], col = 'blue')
 	grid()
 	# The user can now use the identifyPch function to click on
 	# points that they want to remove
 	removeIndex = identifyPch(dataF[,axisA], dataF[,axisB])
-	# Remove the identified points from the data frame
-	filtdataF = dataF[-removeIndex,]
+	# If at least one point is selected, remove it from the input data set
+	if (length(removeIndex) > 0){
+		# Recall that the first 10 seconds of calibration should be fixed with
+		# the animal in a known position. These points should always be saved
+		# Sampling rate was typically 100Hz, so we'll want to save 100Hz * 10s
+		# samples at the start.
+		removeIndex = removeIndex[removeIndex > 1000]
+		# Remove the identified points from the data frame
+		filtdataF = dataF[-removeIndex,]
+	} else {
+		# If user quits out early without choosing any points
+		filtdataF = dataF
+	}
+
 	# Return the pared-down dataset
 	filtdataF
 }
@@ -149,6 +168,7 @@ filterLoop = function(dat1){
 				main = 'Filtered data',
 				xlab = answer1,
 				ylab = answer2)
+		points(df2[1:1000,answer1], df2[1:1000,answer2], col = 'blue')
 		grid()
 		############################
 		cat("Repeat for another round? y or n\n")
@@ -161,15 +181,18 @@ filterLoop = function(dat1){
 	}  # end of while loop
 	df2 # Return the df2 data frame of filtered values
 }
-
+###############################################################################
 # Utilize the functions above to have the user filter the bad data points
 filteredData = filterLoop(df) 
+###############################################################################
+
 
 # Give the user the option to save the output
 cat("Save data frame? y on n\n")
 answer = scan(what = character(), n = 1)
 if (answer == 'y') {
-	write.csv(paste(wdir,"Filtered_",datfile), row.names = FALSE)
+	write.csv(filteredData, file = paste0("Filtered_",datfile), 
+			row.names = FALSE)
 }
 
 
