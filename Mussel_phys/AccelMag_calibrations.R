@@ -209,10 +209,12 @@ cat("Save data frame? y on n\n")
 answer = scan(what = character(), n = 1)
 if (answer == 'y') {
 	# Write the header metadata to the file first
-	write(fileMeta, file = paste0("Filtered_",datfile), 
+	write(fileMeta, 
+			file = paste0("Filtered_",basename(datfile)), 
 			ncolumns = length(fileMeta), sep = ',')
 	# Now write the rest of the filtered data
-	write.table(filteredData, file = paste0("Filtered_",datfile), 
+	write.table(filteredData, 
+			file = paste0("Filtered_",basename(datfile)), 
 			row.names = FALSE, append = TRUE, sep = ",")
 }
 
