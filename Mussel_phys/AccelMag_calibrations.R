@@ -12,39 +12,54 @@ sn = "SN01"	# Specify the board serial number
 #####################################################
 
 setwd("D:/R/Mussel_phys/")
-wdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/mag_calibs_20150712/"
+#wdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/mag_calibs_20150712/"
+#wdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/mag_calibs_20150806/"
+#
+#fnames = dir(wdir, "*.csv")
+#
+## Get a vector of mussel numbers from the file names
+#musselNum = substr(fnames,4,4)
+## Get a vector of serial numbers
+#snNames = substr(fnames,23,26)
+#
+## Find the matching mussel and serial number
+#fnum = which( (musselNum == mussel) & (snNames == sn) )
+#
+## If there is more than 1 matching file, ask the user which they prefer
+#if (length(fnum) > 1) {
+#	cat("Enter the number of a file from the list\n")
+#	for (i in 1:length(fnum)) {
+#		cat(i,': ')
+#		cat(fnames[fnum[i]],'\n')
+#	}
+#	choice = scan(what = integer(), nmax = 1)
+#	fnum = choice # overwrite fnum
+#}
+## Get the chosen file name
+#datfile = fnames[fnum]
 
-fnames = dir(wdir, "*.csv")
+# Interactive file chooser
+datfile = file.choose()
 
-# Get a vector of mussel numbers from the file names
-musselNum = substr(fnames,4,4)
-# Get a vector of serial numbers
-snNames = substr(fnames,23,26)
 
-# Find the matching mussel and serial number
-fnum = which( (musselNum == mussel) & (snNames == sn) )
-
-# If there is more than 1 matching file, ask the user which they prefer
-if (length(fnum) > 1) {
-	cat("Enter the number of a file from the list\n")
-	for (i in 1:length(fnum)) {
-		cat(i,': ')
-		cat(fnames[fnum[i]],'\n')
-	}
-	choice = scan(what = integer(), nmax = 1)
-	fnum = choice # overwrite fnum
-}
-# Get the chosen file name
-datfile = fnames[fnum]
-# Extract the date of the chosen file
-fileDate = substr(datfile,6,13)
 # Read the file's metadata in the first row
-fileMeta = scan(paste0(wdir,datfile), what = character(), sep = ',', nlines = 1)
+fileMeta = scan(datfile, what = character(), sep = ',', nlines = 1)
 # The 5th entry is the accelerometer setting (usually +/- 4g), and the 7th 
 # entry is the magnetometer setting, usually +/- 8 gauss.
 
 # Load the file into memory, skipping the 1st row which has metadata
-df = read.csv(paste0(wdir,datfile), skip = 1)
+df = read.csv(datfile, skip = 1)
+
+# Convert acceleration data to milli-g
+if (fileMeta[5] == '4 g'){
+	df[,2:4] = df[,2:4] * 0.122
+}
+# Convert magnetometer data to milli-gauss (and then to nanoTesla)
+if (fileMeta[7] == '8') {
+	df[,5:7] = df[,5:7] * 0.320 * 100
+}
+# For reference, the total magnetic field norm at HMS is around 47,894 nanoTesla
+# magNorm = 47894.9	# nanoTesla local magnetic field total norm
 
 ###############################################################################
 # Plot the data in 2-D plots
@@ -147,6 +162,8 @@ filterLoop = function(dat1){
 	# Ask the user if they want to filter the accelerometer data
 	cat("Filter data? y or n\n")
 	answer = scan(what = character(), n = 1)
+	# If they answer no, kill the session immediately
+	if (answer == 'n') { repeatFlag = FALSE}
 	while (repeatFlag){
 
 		# If they answer yes, start the filtering process
@@ -191,8 +208,12 @@ filteredData = filterLoop(df)
 cat("Save data frame? y on n\n")
 answer = scan(what = character(), n = 1)
 if (answer == 'y') {
-	write.csv(filteredData, file = paste0("Filtered_",datfile), 
-			row.names = FALSE)
+	# Write the header metadata to the file first
+	write(fileMeta, file = paste0("Filtered_",datfile), 
+			ncolumns = length(fileMeta), sep = ',')
+	# Now write the rest of the filtered data
+	write.table(filteredData, file = paste0("Filtered_",datfile), 
+			row.names = FALSE, append = TRUE, sep = ",")
 }
 
 
