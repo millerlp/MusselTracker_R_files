@@ -217,7 +217,8 @@ if (answer == 'y') {
 			file = paste0("Filtered_",basename(datfile)), 
 			row.names = FALSE, append = TRUE, sep = ",")
 }
-
+cat('Wrote file ',paste0('Filtered_',basename(datfile)),'\n')
+cat('To ',getwd(),'\n')
 
 
 
