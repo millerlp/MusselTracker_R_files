@@ -446,7 +446,7 @@ hallFilter = function(hallData){
 		# Call the filter routine to apply the filter
 		yfiltered = signal:::filter(myfilter,dats)
 		# Add the offset back on so the data are back on their original scale
-		yfiltered = yfiltered +offset
+		yfiltered = yfiltered + offset
 		# Write the filtered data back into the data vector
 		hallData[mygaps$Start[i]:mygaps$End[i]] = yfiltered
 	}
@@ -460,8 +460,7 @@ hallFilter = function(hallData){
 ################################################
 ### percentileRange function
 # Define a function to calculate the average reading for the upper and lower
-# x percentile of the hall effect data. This will hopefully remove the influence
-# of any single spurious high or low readings. 
+# x percentile of the hall effect data.  
 percentileRange = function (Hallvec, percentileLim = 0.01){
 	# Remove any NA's
 	temp = Hallvec[!is.na(Hallvec)]
@@ -489,43 +488,56 @@ percentileRange = function (Hallvec, percentileLim = 0.01){
 # This calculates the baseline fully-closed and fully-open values based
 # on the upper and lower 1% of hall effect sensor data for the given range
 # of rows in the input dataset. 
-# Supply a vector of Hall effect sensor data
+# Supply a vector of Hall effect sensor data. This function will find any 
+# gaps in the vector (NA's) and calculate a new baseline for each section of
+# good data. 
 calcPercentGape = function (hallData){
-	# First calculate the upper and lower 1% values of the raw Hall readings
-	myrange = percentileRange(hallData, percentileLim = 0.01)
-	if (myrange[2] < 512){
-		# If the hall effect and magnet are situated so that the value goes down 
-		# as the mussel closes, then calculate % opening using the maximum 
-		# value. If the maximum value is less than 512, we'll assume that 
-		# closing drives the value down.
-		# Calculate the width of the range of values. If the readings are less
-		# than 512, the smaller value in meanVals represents the fully-closed 
-		# reading while the larger value is the fully open reading. 
-		rangeval = myrange[2] - myrange[1]
-		# Calculate a percentage opening based on the difference between each 
-		# reading and the minimum value (fully closed), divided by the range
-		Hall.percent = ((hallData - myrange[1]) / 
-					rangeval) * 100
-
-	} else if (myrange[2] > 512){
-		# Calculate the width of the range of values. If the readings are larger
-		# than 512, the smaller value in myrange represents the fully-open 
-		# reading while the larger value is the fully-closed reading. 
-		rangeval = myrange[2] - myrange[1]
-		# Calculate a percentage opening based on the difference between each 
-		# reading and the maximum value (fully closed), divided by the range
-		Hall.percent = ((myrange[2] - hallData) / 
-					rangeval) * 100
-	}
-	Hall.percent	# return the set of values
+	# Get the row indices for the major gaps that exist now
+	mygaps = gapBounds(hallData)
+	# Create an empty output vector of the same length as the input data. 
+	outputData = numeric(NA, length = length(hallData))
+	# Now for each section of the input data, calculate the percent gape. This
+	# involves using the entries in mygaps to subset the input data and 
+	# calculate individual percentile values for each contiguous section of
+	# data. If there is a significant gap in the data (usually > 30 sec), the
+	# percentages will be re-calculated for the each good section of data. This
+	# should accomodate any sensor reposition issues. 
+	for (i in 1:nrow(mygaps)){
+		st = mygaps$Start[i]
+		end = mygaps$End[i]
+		# First calculate the upper and lower 1% values of the raw Hall readings
+		myrange = percentileRange(hallData[st:end], percentileLim = 0.01)
+		if (myrange[2] < 512){
+			# If the hall effect and magnet are situated so that the value goes 
+			# down as the mussel closes, then calculate % opening using the 
+			# maximum value. If the maximum value is less than 512, we'll assume
+			# that closing drives the value down.
+			# Calculate the width of the range of values. If the readings are 
+			# less than 512, the smaller value in meanVals represents the 
+			# fully-closed reading while the larger value is the fully open 
+			# reading. 
+			rangeval = myrange[2] - myrange[1]
+			# Calculate a percentage opening based on the difference between 
+			# each reading and the minimum value (fully closed), divided by the 
+			# range
+			outputData[st:end] = ((hallData[st:end] - myrange[1]) / 
+						rangeval) * 100
+		} else if (myrange[2] > 512){
+			# Calculate the width of the range of values. If the readings are 
+			# larger than 512, the smaller value in myrange represents the 
+			# fully-open reading while the larger value is the fully-closed 
+			# reading. 
+			rangeval = myrange[2] - myrange[1]
+			# Calculate a percentage opening based on the difference between 
+			# each reading and the maximum value (fully closed), divided by the 
+			# range
+			outputData[st:end] = ((myrange[2] - hallData[st:end]) / 
+						rangeval) * 100
+		}
+	}	
+	outputData	# return the output data
 }
-
-
-
-# TODO: make a version of the above that can split datasets and deal with 
-# times where a magnetic sensor had to be repositioned, creating a new 
-# baseline. For board SN12 Hall1 this is necessary. 
-
+ 
 cat('Filtering Hall effect data\n')
 df3$Hall1filt = hallFilter(df3$Hall1)
 df3$Hall2filt = hallFilter(df3$Hall2)
@@ -535,59 +547,54 @@ df3$Hall2.percent = calcPercentGape(df3$Hall2filt)
 
 # Note that some of the sensors need to have portions of their data excised 
 # due to spurious values resulting from sensor dislodgement or other failures
-if (board == 'SN12'){
-	# Enter a set of starting and ending time values that you want to cut
-	# out of the hall effect data for a particular sensor
-	timevalsCh1 = c( # 	 start times	 	end times
-					'2015-07-17 00:00', '2015-07-18 12:00',
-					'2015-07-20 10:00', '2015-07-20 14:00',
-					'2015-07-20 18:00',	'2015-07-20 21:00',
-					'2015-07-22 07:00', '2015-07-22 12:00'
-					)
-					
-	timevalsCh2 = c( # start times			end times
-					'2015-07-19 09:59', '20190-07-24 11:10')						
-	timevalsCh1 = as.POSIXct(timevalsCh1) # convert to timestamps
-	# Find the closest matching row in df3 by searching for the smallest time
-	# difference between each timestamp in timevals and each DateTime in df3
-	for (i in 1:length(timevals)){
-		timevals2[i] = which.min(abs(timevals[i] - df3$DateTime))	
-	}
-	# Create a data frame by taking the start values and end values of 
-	# row indices and splitting them into two columns
-	excisedf = data.frame(Start = timevals2[seq(1,length(timevals2),by=2)],
-			End = timevals2[seq(2,length(timevals2),by=2)])
-	
-	# Go through each set of row indices in excisedf, overwrite spurious data
-	# as NA's.
-	for (i in 1:nrow(excisedf)){
-		# Convert all suspect data to NAs
-		st = excisedf$Start[i]
-		end = excisedf$End[i]
-		df3$Hall1[st:end] = NA
-	}
-	# Apply the butterworth filter
-	df3$Hall1filt = hallFilter(df3$Hall1)
-	
-	# Get the row indices for the major gaps that exist now
-	mygaps = gapBounds(df3$Hall1filt)
-	# For each entry in mygaps, use the calcPercentGape function to calculate
-	# the percent gape opening. This will calculate a new baseline closed 
-	# value after every major gap, which often represents a repositioned 
-	# magnet or sensor. 
-	df3$Hall1.percent = NA	# initialize output column
-	for (i in 1:nrow(mygaps)){
-		st = mygaps$Start[i]
-		end = mygaps$End[i]
-		df3$Hall1.percent[st:end] = calcPercentGape(df3$Hall1filt[st:end])
-	}	
-}
+#if (board == 'SN12'){
+#	# Enter a set of starting and ending time values that you want to cut
+#	# out of the hall effect data for a particular sensor
+#	timevalsCh1 = c( # 	 start times	 	end times
+#					'2015-07-17 00:00', '2015-07-18 12:00',
+#					'2015-07-20 10:00', '2015-07-20 14:00',
+#					'2015-07-20 18:00',	'2015-07-20 21:00',
+#					'2015-07-22 07:00', '2015-07-22 12:00'
+#					)
+#					
+#	timevalsCh2 = c( # start times			end times
+#					'2015-07-19 09:59', '20190-07-24 11:10')						
+#	timevalsCh1 = as.POSIXct(timevalsCh1) # convert to timestamps
+#	# Find the closest matching row in df3 by searching for the smallest time
+#	# difference between each timestamp in timevals and each DateTime in df3
+#	for (i in 1:length(timevals)){
+#		timevals2[i] = which.min(abs(timevals[i] - df3$DateTime))	
+#	}
+#	# Create a data frame by taking the start values and end values of 
+#	# row indices and splitting them into two columns
+#	excisedf = data.frame(Start = timevals2[seq(1,length(timevals2),by=2)],
+#			End = timevals2[seq(2,length(timevals2),by=2)])
+#	
+#	# Go through each set of row indices in excisedf, overwrite spurious data
+#	# as NA's.
+#	for (i in 1:nrow(excisedf)){
+#		# Convert all suspect data to NAs
+#		st = excisedf$Start[i]
+#		end = excisedf$End[i]
+#		df3$Hall1[st:end] = NA
+#	}
+#	# Apply the butterworth filter
+#	df3$Hall1filt = hallFilter(df3$Hall1)
+#	
+#	# Get the row indices for the major gaps that exist now
+#	mygaps = gapBounds(df3$Hall1filt)
+#	# For each entry in mygaps, use the calcPercentGape function to calculate
+#	# the percent gape opening. This will calculate a new baseline closed 
+#	# value after every major gap, which often represents a repositioned 
+#	# magnet or sensor. 
+#	df3$Hall1.percent = NA	# initialize output column
+#	for (i in 1:nrow(mygaps)){
+#		st = mygaps$Start[i]
+#		end = mygaps$End[i]
+#		df3$Hall1.percent[st:end] = calcPercentGape(df3$Hall1filt[st:end])
+#	}	
+#}
 
-if (board == 'SN11'){
-	# SN11 has gape sensor issues on both mussels, probably for separate reasons
-	# Mussel 1 also has bad thermocouple data after the 29th. 
-	
-}
 
 #plot(Hall1.percent~DateTime, data = df3[,], type = 'l')
 
