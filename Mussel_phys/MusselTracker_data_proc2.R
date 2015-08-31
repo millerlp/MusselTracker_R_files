@@ -4,6 +4,13 @@
 # making small interpolations for small gaps (less than 30 seconds) etc. 
 # Author: Luke Miller Jul 9, 2015
 ###############################################################################
+
+# Enter the serial number of the board files you want to process below:
+##########################################
+board = 'SN08'
+##########################################
+
+
 require(RColorBrewer)
 require(signal) # For low-pass filtering
 require(zoo) # For merging time series
@@ -16,10 +23,7 @@ Sys.getenv('TZ') # Report back to show that time zone setting worked
 ## properly show the fractional seconds when displaying the formatted time
 options(digit.secs = 6, digits = 12) 
 
-# Enter the serial number of the board files you want to process below:
-##########################################
-board = 'SN14'
-##########################################
+
 # This assumes that there will be a folder of the same name (SN14 for example)
 # in which the script will find all of the files. Specify the path to the 
 # directory below.
@@ -28,6 +32,9 @@ board = 'SN14'
 fdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/Field_data/"
 # Specify the directory holding the thermocouple calibration data file
 tcdir = "D:/Miller_projects/Mussel_phys/MusselTracker_data/Thermocouple_calibrations/20150630_calibrations/"
+# Specify the file with the timestamps that need to be excised
+exfile = paste0(fdir,'Timestamps_excise_list.csv')
+
 
 # Specify a start and end time cutoff for the dataset. The plates were 
 # deployed in the field by 2015-07-15 7:30PDT, prior points are in the water table
@@ -184,8 +191,112 @@ df = df2
 df3 = df[seq(1,(nrow(df)-3), by = 4),c('POSIXt','DateTime','SerialNumber',
 				'Temp1','Hall1', 'Temp2','Hall2')]
 
+################################################################################
+# The time periods with questionable data are listed in the file
+# Timestamps_excise_list.csv. Open it and remove any data from df3 that are
+# suspect. 
 
+excisedf = read.csv(exfile)
+excisedf$StartIgnore = as.POSIXct(excisedf$StartIgnore, 
+		format = '%m/%d/%Y %H:%M')
+excisedf$EndIgnore = as.POSIXct(excisedf$EndIgnore, 
+		format = '%m/%d/%Y %H:%M')
 
+# Find the rows in excisedf that have the same serial number as the current
+# board, and have time points to remove for each channel and sensor combo
+
+# Start with Ch1 Temperature
+matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Temp')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df3$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df3$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df3$Temp1[startrow:endrow] = NA
+	}
+}
+# Do the same for Channel 2 temperature
+matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Temp')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df3$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df3$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df3$Temp2[startrow:endrow] = NA
+	}
+}
+# Next remove bad data from Hall sensor Ch1
+matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Hall')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df3$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df3$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df3$Hall1[startrow:endrow] = NA
+	}
+}
+# And remove bad data from Hall sensor Ch2
+matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Hall')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df3$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df3$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df3$Hall2[startrow:endrow] = NA
+	}
+}
+###############################################################################
+# Do the same removal procedure for the suspect magnetometer and accelerometer
+# data
+# Start with Ch1 accel/mag
+matches = which(excisedf$SerialNumber == unique(df$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'accelmag')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df$a1.x[startrow:endrow] = NA
+		df$a1.y[startrow:endrow] = NA
+		df$a1.z[startrow:endrow] = NA
+		df$m1.x[startrow:endrow] = NA
+		df$m1.y[startrow:endrow] = NA
+		df$m1.z[startrow:endrow] = NA
+	}
+}
+
+# Then do Ch2 accel/mag 
+matches = which(excisedf$SerialNumber == unique(df$SerialNumber)[1] &
+				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'accelmag')
+if (length(matches) > 0){
+	for (i in 1:length(matches)){
+		startrow = which.min(abs(df$DateTime - 
+								excisedf$StartIgnore[matches[i]]))
+		endrow = which.min(abs(df$DateTime - 
+								excisedf$EndIgnore[matches[i]]))
+		# blank out the suspect rows of data
+		df$a2.x[startrow:endrow] = NA
+		df$a2.y[startrow:endrow] = NA
+		df$a2.z[startrow:endrow] = NA
+		df$m2.x[startrow:endrow] = NA
+		df$m2.y[startrow:endrow] = NA
+		df$m2.z[startrow:endrow] = NA
+	}
+}
 
 ###############################################################################
 cat('Applying temperature calibrations\n')
@@ -427,13 +538,16 @@ df3$Hall2.percent = calcPercentGape(df3$Hall2filt)
 if (board == 'SN12'){
 	# Enter a set of starting and ending time values that you want to cut
 	# out of the hall effect data for a particular sensor
-	timevals = c( # 	 start times	 	end times
+	timevalsCh1 = c( # 	 start times	 	end times
 					'2015-07-17 00:00', '2015-07-18 12:00',
 					'2015-07-20 10:00', '2015-07-20 14:00',
 					'2015-07-20 18:00',	'2015-07-20 21:00',
 					'2015-07-22 07:00', '2015-07-22 12:00'
 					)
-	timevals = as.POSIXct(timevals) # convert to timestamps
+					
+	timevalsCh2 = c( # start times			end times
+					'2015-07-19 09:59', '20190-07-24 11:10')						
+	timevalsCh1 = as.POSIXct(timevalsCh1) # convert to timestamps
 	# Find the closest matching row in df3 by searching for the smallest time
 	# difference between each timestamp in timevals and each DateTime in df3
 	for (i in 1:length(timevals)){
@@ -528,59 +642,97 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	}
 }	# end of plotTemps function
 
-par(mfrow = c(2,1), mar = c(4,5,1,1))
-cols = brewer.pal(3,'Set1')
-# Plot temperature first
-if (plot2){
-	ylims = range(c(df3$Temp1c,df3$Temp2c), na.rm = TRUE)
-	ylims[2] = ylims[2] + 2 # bump the upper temp limit up slightly
-	plot(df3$DateTime, df3$Temp1c, type = 'n', 
-			ylab = expression(Temperature*','~degree*C),
-			xlab = 'Time',
-			col = cols[1],
-			ylim = ylims,
-			las = 1)
-	grid()
-	lines(df3$DateTime, df3$Temp1c, col = cols[1])
-	lines(df3$DateTime, df3$Temp2c, col = cols[2])	
-	legend('topleft', legend = c('Mussel 1','Mussel 2'), lty = 1,
-			col = cols[1:2], bty = 'n')
-} else {
-	 # Else just plot the 1st mussel data
-	plot(df3$DateTime, df3$Temp1c, type = 'l', 
-			ylab = expression(Temperature*','~degree*C),
-			xlab = 'Time',
-			col = cols[1],
-			ylim = ylims,
-			las = 1)
+
+
+
+#par(mfrow = c(2,1), mar = c(4,5,1,1))
+#cols = brewer.pal(3,'Set1')
+## Plot temperature first
+#if (plot2){
+#	ylims = range(c(df3$Temp1c,df3$Temp2c), na.rm = TRUE)
+#	ylims[2] = ylims[2] + 2 # bump the upper temp limit up slightly
+#	plot(df3$DateTime, df3$Temp1c, type = 'n', 
+#			ylab = expression(Temperature*','~degree*C),
+#			xlab = 'Time',
+#			col = cols[1],
+#			ylim = ylims,
+#			las = 1)
+#	grid()
+#	lines(df3$DateTime, df3$Temp1c, col = cols[1])
+#	lines(df3$DateTime, df3$Temp2c, col = cols[2])	
+#	legend('topleft', legend = c('Mussel 1','Mussel 2'), lty = 1,
+#			col = cols[1:2], bty = 'n')
+#} else {
+#	 # Else just plot the 1st mussel data
+#	plot(df3$DateTime, df3$Temp1c, type = 'l', 
+#			ylab = expression(Temperature*','~degree*C),
+#			xlab = 'Time',
+#			col = cols[1],
+#			ylim = ylims,
+#			las = 1)
+#}
+
+plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:00', 
+		endT = '2015-08-06 9:20'){
+	# Establish start and end times for the plot
+	startT = as.POSIXct(startT)
+	endT = as.POSIXct(endT)
+	# Find nearest row indices in the data set
+	startTind = which.min(abs(df3$DateTime - startT))
+	endTind = which.min(abs(df3$DateTime - endT))
+	ylims = range(-5,110)
+	if (Ch == 1) {
+		plot(df3$DateTime[startTind:endTind], 
+				df3$Hall1.percent[startTind:endTind], type = 'n',
+				ylab = 'Gape width, %',
+				xlab = 'Time',
+				col = cols[1],
+				ylim = ylims,
+				las = 1)
+		grid()
+		lines(df3$DateTime[startTind:endTind],
+				df3$Hall1.percent[startTind:endTind], col = cols[1])
+	} else if (Ch == 2) {
+		plot(df3$DateTime[startTind:endTind], 
+				y = df3$Hall2.percent[startTind:endTind], type = 'n',
+				ylab = 'Gape width, %',
+				xlab = 'Time',
+				col = cols[2],
+				ylim = ylims,
+				las = 1)
+		grid()
+		lines(df3$DateTime[startTind:endTind],
+				df3$Hall2.percent[startTind:endTind], col = cols[2])
+	}
 }
 
+
 # Plot the hall effect sensor data
-if (plot2) {
-	ylims = range(-5,110)
-	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
-			ylab = 'Gape width, %',
-			xlab = 'Time',
-			col = cols[1],
-			ylim = ylims,
-			las = 1)
-	grid()
-	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
-	lines(df3$DateTime, df3$Hall2.percent, col = cols[2])
-#	legend('topleft', legend = c('Mussel 1','Mussel 2'), col = cols[1:2],
-#			lty = 1)
-} else {
-	# Else just plot the 1st mussel data
-	ylims = range(-5,110)
-	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
-			ylab = 'Gape width, %',
-			xlab = 'Time',
-			col = cols[1],
-			ylim = ylims,
-			las = 1)
-	grid()
-	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
-}
+#if (plot2) {
+#	ylims = range(-5,110)
+#	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
+#			ylab = 'Gape width, %',
+#			xlab = 'Time',
+#			col = cols[1],
+#			ylim = ylims,
+#			las = 1)
+#	grid()
+#	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
+#	lines(df3$DateTime, df3$Hall2.percent, col = cols[2])
+##	legend('topleft', legend = c('Mussel 1','Mussel 2'), col = cols[1:2],
+##			lty = 1)
+#} else {
+#	# Else just plot the 1st mussel data
+#	ylims = range(-5,110)
+#	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
+#			ylab = 'Gape width, %',
+#			xlab = 'Time',
+#			col = cols[1],
+#			ylim = ylims,
+#			las = 1)
+#	grid()
+#	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
+#}
 
 ## Plot the accelerometer + magnetometer data
 #yrange = range(c(df$a1.x,df$a1.y,df$a1.z,df$m1.x,df$m1.y,df$m1.z),na.rm=TRUE)
@@ -617,20 +769,25 @@ if (plot2) {
 #		xlab = 'Time',
 #		col = cols[2],
 #		las = 1)
-## Plot the accelerometer + magnetometer data
-mystart = as.POSIXct('2015-07-15 00:00', tz = 'PST8PDT')
-myend = as.POSIXct('2015-07-15 9:30', tz = 'PST8PDT')
-mystart = which.min(abs(df$DateTime - mystart))
-myend = which.min(abs(df$DateTime - myend))
 
-yrange = range(c(df$m1.x,df$m1.y,df$m1.z,df$m1.x,df$m1.y,df$m1.z), na.rm=TRUE)
-plot(df$DateTime[mystart:myend], df$m1.x[mystart:myend], type = 'l',
-		ylim = yrange,
-		ylab = 'Accelerometer',
-		xlab = 'Time'
-)
-lines(df$DateTime[mystart:myend], df$m1.y[mystart:myend], col = 2)
-lines(df$DateTime[mystart:myend], df$m1.z[mystart:myend], col = 3)
+
+## Plot the magnetometer data
+#mystart = as.POSIXct('2015-07-17 00:00', tz = 'PST8PDT')
+#myend = as.POSIXct('2015-07-19 9:30', tz = 'PST8PDT')
+#mystart = which.min(abs(df$DateTime - mystart))
+#myend = which.min(abs(df$DateTime - myend))
+#
+#yrange = range(c(df$m1.x,df$m1.y,df$m1.z,df$m1.x,df$m1.y,df$m1.z), na.rm=TRUE)
+#plot(df$DateTime[mystart:myend], df$m1.x[mystart:myend], type = 'l',
+#		ylim = yrange,
+#		ylab = 'Magnetometer',
+#		xlab = 'Time'
+#)
+#lines(df$DateTime[mystart:myend], df$m1.y[mystart:myend], col = 2)
+#lines(df$DateTime[mystart:myend], df$m1.z[mystart:myend], col = 3)
+
+
+
 #legend('top', legend = c('accel.x','accel.y','accel.z'),
 #		col = 1:3, lty = 1, bty = 'n', horiz = TRUE)
 #plot(df$DateTime, df$m2.x, type = 'l',
@@ -644,7 +801,7 @@ lines(df$DateTime[mystart:myend], df$m1.z[mystart:myend], col = 3)
 #		col = 4:6, lty = 1, bty = 'n', horiz = TRUE)
 
 ######################################################################
-require(ggplot2)
+#require(ggplot2)
 
 # Multiple plot function
 #
@@ -656,41 +813,41 @@ require(ggplot2)
 # then plot 1 will go in the upper left, 2 will go in the upper right, and
 # 3 will go all the way across the bottom.
 #
-multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
-	library(grid)
-	
-	# Make a list from the ... arguments and plotlist
-	plots <- c(list(...), plotlist)
-	
-	numPlots = length(plots)
-	
-	# If layout is NULL, then use 'cols' to determine layout
-	if (is.null(layout)) {
-		# Make the panel
-		# ncol: Number of columns of plots
-		# nrow: Number of rows needed, calculated from # of cols
-		layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
-				ncol = cols, nrow = ceiling(numPlots/cols))
-	}
-	
-	if (numPlots==1) {
-		print(plots[[1]])
-		
-	} else {
-		# Set up the page
-		grid.newpage()
-		pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
-		
-		# Make each plot, in the correct location
-		for (i in 1:numPlots) {
-			# Get the i,j matrix positions of the regions that contain this subplot
-			matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
-			
-			print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
-							layout.pos.col = matchidx$col))
-		}
-	}
-}
+#multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+#	library(grid)
+#	
+#	# Make a list from the ... arguments and plotlist
+#	plots <- c(list(...), plotlist)
+#	
+#	numPlots = length(plots)
+#	
+#	# If layout is NULL, then use 'cols' to determine layout
+#	if (is.null(layout)) {
+#		# Make the panel
+#		# ncol: Number of columns of plots
+#		# nrow: Number of rows needed, calculated from # of cols
+#		layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+#				ncol = cols, nrow = ceiling(numPlots/cols))
+#	}
+#	
+#	if (numPlots==1) {
+#		print(plots[[1]])
+#		
+#	} else {
+#		# Set up the page
+#		grid.newpage()
+#		pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+#		
+#		# Make each plot, in the correct location
+#		for (i in 1:numPlots) {
+#			# Get the i,j matrix positions of the regions that contain this subplot
+#			matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+#			
+#			print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+#							layout.pos.col = matchidx$col))
+#		}
+#	}
+#}
 
 #
 #mussT = ggplot(df, aes(x = DateTime)) + 
