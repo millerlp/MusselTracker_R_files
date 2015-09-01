@@ -7,7 +7,7 @@
 
 # Enter the serial number of the board files you want to process below:
 ##########################################
-board = 'SN13'
+board = 'SN14'
 ##########################################
 
 
@@ -93,6 +93,13 @@ df = df[order(df$POSIXt),]
 # Add a column to hold the board serial number, insert it near the front of
 # the data frame
 df = cbind(df[,1:2], data.frame(SerialNumber=rep(sn,nrow(df))), df[3:ncol(df)])
+
+if (sn == 'SN14') {
+	# Board SN14 had the clock set exactly 2 hrs behind the others, so advance
+	# all timestamps on that board by 2 hours (60x60x2 = 7200 seconds)
+	df$POSIXt = df$POSIXt + 7200
+	df$DateTime = df$DateTime + 7200
+}
 
 dfo = df # keep a copy of the unmolested input data frame in dfo
 ###############################################################################
