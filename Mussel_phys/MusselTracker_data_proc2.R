@@ -7,7 +7,7 @@
 
 # Enter the serial number of the board files you want to process below:
 ##########################################
-board = 'SN08'
+board = 'SN03'
 ##########################################
 
 
@@ -38,13 +38,11 @@ exfile = paste0(fdir,'Timestamps_excise_list.csv')
 
 # Specify a start and end time cutoff for the dataset. The plates were 
 # deployed in the field by 2015-07-15 7:30PDT, prior points are in the water table
-cutoffstart = as.POSIXct('2015-07-15 0:00:00', tz = 'PST8PDT')
+cutoffstart = as.POSIXct('2015-07-15 07:30:00', tz = 'PST8PDT')
 cutoffend = as.POSIXct('2015-08-06 09:20', tz = 'PST8PDT')
 
 fname1 = paste0(fdir,board)
 fnames = dir(fname1, pattern = '*.csv', full.names = TRUE)
-
-#fname = '20150710_0000_00_SN02.csv'
 
 # Open all the field data files and drop them in one large data frame
 tot = length(fnames)
@@ -90,6 +88,7 @@ df$DateTime = df$DateTime + (df$fractional.Second/100)
 # Reorder the data frame based on the POSIXt column, since we've pasted several
 # input data files together
 df = df[order(df$POSIXt),]
+
 
 # Add a column to hold the board serial number, insert it near the front of
 # the data frame
@@ -154,7 +153,7 @@ cat('Removed',badrowtot,'suspect rows from data.\n')
 #******************************************************************************
 
 ###############################################################################
-# The data frame df should already by ordered. We can create a larger data
+# The data frame df should already be ordered. We can create a larger data
 # frame of all time points from start to finish, including gaps in the files,
 # by using the first POSIXt value and the last, with a 0.25sec interval.
 cat('Expanding dataset to entire time period\n')
@@ -175,11 +174,9 @@ df2$DateTime = as.POSIXct(df2$POSIXt, origin = '1970-1-1', tz = "PST8PDT")
 # Fill in the board serial number column to fill any missing rows
 df2$SerialNumber = board
 
-# Remove data from before the field deployment if present.
+# Remove data from before and after the field deployment, if present.
 df2 = df2[df2$DateTime >= cutoffstart,]
-
-# Overwrite df with the new df2 version
-df = df2
+df2 = df2[df2$DateTime <= cutoffend,]
 
 ###############################################################################
 # Recall that the temperature and hall effect data were only sampled 1 time
@@ -188,13 +185,21 @@ df = df2
 # much smaller data set, and also leave the accelerometer/magnetomter values
 # out, since they were sampled at 4Hz. 
 
-df3 = df[seq(1,(nrow(df)-3), by = 4),c('POSIXt','DateTime','SerialNumber',
+df3 = df2[seq(1,(nrow(df2)-3), by = 4),c('POSIXt','DateTime','SerialNumber',
 				'Temp1','Hall1', 'Temp2','Hall2')]
+df3$SerialNumber = as.factor(df3$SerialNumber)
+
+# Remove the columns of df2 pertaining to Temp and Hall data, retaining the
+# accel and magnetometer data
+df2 = df2[c(1,2,3,4,5,6,7,8,9,10,13,14,15,16,17,18)]
+df2$SerialNumber = as.factor(df2$SerialNumber)
+
+
 
 ################################################################################
 # The time periods with questionable data are listed in the file
-# Timestamps_excise_list.csv. Open it and remove any data from df3 that are
-# suspect. 
+# Timestamps_excise_list.csv. Open it and remove any data from df2 and df3 that 
+# are suspect. 
 
 excisedf = read.csv(exfile)
 excisedf$StartIgnore = as.POSIXct(excisedf$StartIgnore, 
@@ -202,101 +207,150 @@ excisedf$StartIgnore = as.POSIXct(excisedf$StartIgnore,
 excisedf$EndIgnore = as.POSIXct(excisedf$EndIgnore, 
 		format = '%m/%d/%Y %H:%M')
 
-# Find the rows in excisedf that have the same serial number as the current
-# board, and have time points to remove for each channel and sensor combo
+##############################################################
+# exciseTempHall: A function to excise questionable rows of data from the 1-Hz 
+# temperature and Hall effect sensor data frame
+# Inputs:
+#	temphall: a data frame of temperature and hall effect data from the
+#			Mussel Tracker raw data files
+#	excisedf: a data frame of start and end times to ignore in the data set
+# Output:
+# 	temphall: a modified version of the input data frame with the questionable
+#			rows replaced with NAs. 
 
-# Start with Ch1 Temperature
-matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Temp')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df3$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df3$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df3$Temp1[startrow:endrow] = NA
+exciseTempHall = function(temphall, excisedf) {
+	# Find the rows in excisedf that have the same serial number as the current
+	# board, and have time points to remove for each channel and sensor combo
+	# Start with Ch1 Temperature
+	matches = which(excisedf$SerialNumber == levels(temphall$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Temp')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(temphall$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(temphall$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			temphall$Temp1[startrow:endrow] = NA
+		}
 	}
-}
-# Do the same for Channel 2 temperature
-matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Temp')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df3$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df3$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df3$Temp2[startrow:endrow] = NA
+	# Do the same for Channel 2 temperature
+	matches = which(excisedf$SerialNumber == levels(temphall$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Temp')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(temphall$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(temphall$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			temphall$Temp2[startrow:endrow] = NA
+		}
 	}
-}
-# Next remove bad data from Hall sensor Ch1
-matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Hall')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df3$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df3$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df3$Hall1[startrow:endrow] = NA
+	# Next remove bad data from Hall sensor Ch1
+	matches = which(excisedf$SerialNumber ==levels(temphall$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'Hall')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(temphall$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(temphall$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			temphall$Hall1[startrow:endrow] = NA
+		}
 	}
-}
-# And remove bad data from Hall sensor Ch2
-matches = which(excisedf$SerialNumber == unique(df3$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Hall')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df3$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df3$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df3$Hall2[startrow:endrow] = NA
+	# And remove bad data from Hall sensor Ch2
+	matches = which(excisedf$SerialNumber == levels(temphall$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'Hall')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(temphall$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(temphall$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			temphall$Hall2[startrow:endrow] = NA
+		}
 	}
-}
+	temphall # return data frame as output
+} # End of exciseTempHall function
+
 ###############################################################################
 # Do the same removal procedure for the suspect magnetometer and accelerometer
 # data
-# Start with Ch1 accel/mag
-matches = which(excisedf$SerialNumber == unique(df$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'accelmag')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df$a1.x[startrow:endrow] = NA
-		df$a1.y[startrow:endrow] = NA
-		df$a1.z[startrow:endrow] = NA
-		df$m1.x[startrow:endrow] = NA
-		df$m1.y[startrow:endrow] = NA
-		df$m1.z[startrow:endrow] = NA
+# exciseAccelMag: a function to excise questionable rows of data from 4Hz 
+# accelerometer and magnetometer data frame
+# Inputs:
+# 	accelmag: a data frame of accel and magnetometer data from the 
+# 			Mussel Tracker raw data files.
+#	excisedf: a data frame of start and end times for data that should be 
+# 			ignored
+# Output:
+# 	accelmag: a modified version of the input data frame with the spurious data
+# 				rows replaced with NAs.
+exciseAccelMag = function(accelmag, excisedf) {
+	# Start with Ch1 accel/mag
+	matches = which(excisedf$SerialNumber == levels(accelmag$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch1' & excisedf$Sensor == 'accelmag')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(accelmag$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(accelmag$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			accelmag$a1.x[startrow:endrow] = NA
+			accelmag$a1.y[startrow:endrow] = NA
+			accelmag$a1.z[startrow:endrow] = NA
+			accelmag$m1.x[startrow:endrow] = NA
+			accelmag$m1.y[startrow:endrow] = NA
+			accelmag$m1.z[startrow:endrow] = NA
+		}
 	}
+	# Then do Ch2 accel/mag 
+	matches = which(excisedf$SerialNumber == levels(accelmag$SerialNumber)[1] &
+					excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'accelmag')
+	if (length(matches) > 0){
+		for (i in 1:length(matches)){
+			startrow = which.min(abs(accelmag$DateTime - 
+									excisedf$StartIgnore[matches[i]]))
+			endrow = which.min(abs(accelmag$DateTime - 
+									excisedf$EndIgnore[matches[i]]))
+			# blank out the suspect rows of data
+			accelmag$a2.x[startrow:endrow] = NA
+			accelmag$a2.y[startrow:endrow] = NA
+			accelmag$a2.z[startrow:endrow] = NA
+			accelmag$m2.x[startrow:endrow] = NA
+			accelmag$m2.y[startrow:endrow] = NA
+			accelmag$m2.z[startrow:endrow] = NA
+		}
+	}
+	accelmag	# Return the modified accelmag data frame
 }
+###############################################################################
+# Apply the excise functions to replace spurious data with NA's. 
+cat('Removing suspect timepoints, replacing with NAs\n')
+df2 = exciseAccelMag(df2, excisedf)
+df3 = exciseTempHall(df3, excisedf)
 
-# Then do Ch2 accel/mag 
-matches = which(excisedf$SerialNumber == unique(df$SerialNumber)[1] &
-				excisedf$Mussel == 'Ch2' & excisedf$Sensor == 'accelmag')
-if (length(matches) > 0){
-	for (i in 1:length(matches)){
-		startrow = which.min(abs(df$DateTime - 
-								excisedf$StartIgnore[matches[i]]))
-		endrow = which.min(abs(df$DateTime - 
-								excisedf$EndIgnore[matches[i]]))
-		# blank out the suspect rows of data
-		df$a2.x[startrow:endrow] = NA
-		df$a2.y[startrow:endrow] = NA
-		df$a2.z[startrow:endrow] = NA
-		df$m2.x[startrow:endrow] = NA
-		df$m2.y[startrow:endrow] = NA
-		df$m2.z[startrow:endrow] = NA
-	}
-}
+#######*********************************************************************
+# There will be small gaps in the dataset of a few seconds, along with some
+# longer gaps. Use the functions in the zoo package to fill in the brief 
+# missing data with the prior values, defining a maxgap beyond which values
+# won't be filled in. 
+cat('Filling small gaps in the dataset\n')
+# Convert the data frame to a zoo object, leaving behind the POSIXt, DateTime
+# and SerialNumber columns so that only numeric data are included
+z = zoo(df3[, -c(1,2,3)], order.by = df3$POSIXt)
+# For brief missing data, carry forward the last non-NA value, up to a maximum
+# of maxgap rows. For these 1-second data, 30 = thirty second gaps max.
+z2 = na.locf(z, maxgap = 30)
+# Copy the filled data back into df3
+df3[,4:7] = z2
+# At this point there should only be significant gaps of missing data during
+# times when the datalogger was not recording for some reason, due to battery
+# failure, interruptions for downloading, etc. 
 
 ###############################################################################
 cat('Applying temperature calibrations\n')
@@ -337,26 +391,9 @@ applyTCcalib = function(temps, calibInt, calibSlope){
 	temps2 	# return the rounded, calibrated values
 }
 
-df3$Temp1c = applyTCcalib(df3$Temp1, tc1int, tc1sl)
-df3$Temp2c = applyTCcalib(df3$Temp2, tc2int, tc2sl)
+df3$Temp1calib = applyTCcalib(df3$Temp1, tc1int, tc1sl)
+df3$Temp2calib = applyTCcalib(df3$Temp2, tc2int, tc2sl)
 
-#######*********************************************************************
-# There will be small gaps in the dataset of a few seconds, along with some
-# longer gaps. Use the functions in the zoo package to fill in the brief 
-# missing data with the prior values, defining a maxgap above which values
-# won't be filled in. 
-cat('Filling small gaps in the dataset\n')
-# Convert the data frame to a zoo object, leaving behind the POSIXt, DateTime
-# and SerialNumber columns so that only numeric data are included
-z = zoo(df3[, -c(1,2,3)], order.by = df3$POSIXt)
-# For brief missing data, carry forward the last non-NA value, up to a maximum
-# of maxgap rows. For these 1-second data, 30 = thirty second gaps max.
-z2 = na.locf(z, maxgap = 10)
-# Copy the filled data back into df3
-df3[,4:9] = z2
-# At this point there should only be significant gaps of missing data during
-# times when the datalogger was not recording for some reason, due to battery
-# failure, interruptions for downloading, etc. 
 
 
 ##*****************************************************************************
@@ -371,51 +408,98 @@ df3[,4:9] = z2
 gapBounds = function (values){
 	# This function returns a data frame of 2 columns, start + end, that give
 	# the row indices of the start and end of each run of good data in the 
-	# input vector. It does not currently handle data streams that start off
-	# with NA values, but should handle streams that end with NAs. 
+	# input vector. It should handle data streams that start with NAs and
+	# should handle streams that end with NAs. 
 	
 	# Use run length encoding function to find NA gaps
 	gaps = rle(is.na(values))
+	# If the first entry in gaps is TRUE, this indicates that the data started
+	# with NA values.
+	if (gaps$values[1] == TRUE) {
+		startNA = TRUE
+	} else {	
+		startNA = FALSE	 # Data started with real values
+	}
+	
 	# The number of gaps with value = TRUE is the number of good runs of data
+	# and gaps with value == FALSE are the starts of runs of NAs. This will
+	# get the number of FALSE (negated to TRUE) values in gaps. A dataset
+	# ending in good data will typically have a last entry in gaps of FALSE 
 	numgaps = sum(!gaps$values)
-	# Find the indices of the entries that are FALSE (negated to TRUE) that
-	# represent the start and end points of good data
-	truegaps = which(!gaps$values)
 	# Create the output data frame
 	results = data.frame(Start = integer(numgaps), End = integer(numgaps))
-	# The first entry should always be 1 (1st row). If there are no gaps, the
+
+	# The first entry should always be 1 (1st row) for data that start with 
+	# real values. If there are no gaps, the
 	# contents of gaps$lengths will just be the length of the values vector
 	results$Start[1] = 1
 	results$End[1] = gaps$lengths[1]
+	# However, if the dataset starts with NAs, the first entry in gaps will
+	# be the index of the first good data, while the 2nd entry will be the 
+	# start of the next stretch of NAs
+	if (startNA) {
+		results$Start[1] = gaps$lengths[1]+1
+		results$End[1] = sum(gaps$lengths[1:2])
+	}
+	
 	# If there is more than 1 entry in gaps$lengths, process the other gaps
 	j = 2; # counter
-	if (numgaps> 1){
+	if (numgaps > 1){
 		if (numgaps %% 2 == 0){
-			# Even number of gaps, dataset ends on NAs
-			for (i in seq(2, length(gaps$lengths)-1, by = 2)){
-				nextstart = sum(gaps$lengths[1:i]) + 1
-				nextend = sum(gaps$lengths[1:(i+1)])
-				results$Start[j] = nextstart
-				results$End[j] = nextend
-				j = j + 1
+			if (!startNA){		
+				# Even number of gaps, dataset ends on NAs
+				for (i in seq(2, length(gaps$lengths)-1, by = 2)){
+					nextstart = sum(gaps$lengths[1:i]) + 1
+					nextend = sum(gaps$lengths[1:(i+1)])
+					results$Start[j] = nextstart
+					results$End[j] = nextend
+					j = j + 1
+				}
+			} else if (startNA){
+				# Even number of gaps, dataset started on NAs. The 1st entry
+				# is taken care of above, so we start with the 3rd entry which
+				# should be the next stretch of good data (i.e. it should be
+				# a TRUE entry in gaps$values
+				for (i in seq(3, length(gaps$lengths)-1, by = 2)){
+					nextstart = sum(gaps$lengths[1:i]) + 1
+					nextend = sum(gaps$lengths[1:(i+1)])
+					results$Start[j] = nextstart
+					results$End[j] = nextend
+					j = j + 1
+				}
 			}
-			
 		} else if (numgaps %% 2 != 0){
 			# Odd number of gaps
-			for (i in seq(2,length(gaps$lengths), by = 2)){
-				# The first value in gaps$lengths should represent the end of a
-				# a good run of data, and the 2nd value should represent the
-				# length of a run of NAs. As such, the start of the next run
-				# of good data is the sum of all the previous gaps$lengths 
-				# values so far
-				nextstart = sum(gaps$lengths[1:i]) + 1
-				nextend = sum(gaps$lengths[1:(i+1)])
-				results$Start[j] = nextstart
-				results$End[j] = nextend
-				j = j + 1
+			if (!startNA){
+				for (i in seq(2,length(gaps$lengths), by = 2)){
+					# The first value in gaps$lengths should represent the end 
+					# of a
+					# a good run of data, and the 2nd value should represent the
+					# length of a run of NAs. As such, the start of the next run
+					# of good data is the sum of all the previous gaps$lengths 
+					# values so far
+					nextstart = sum(gaps$lengths[1:i]) + 1
+					nextend = sum(gaps$lengths[1:(i+1)])
+					results$Start[j] = nextstart
+					results$End[j] = nextend
+					j = j + 1
+				}
+			} else if (startNA){
+				# Handle the case where the data stream started with NA values
+				for (i in seq(3,length(gaps$lengths), by = 2)){
+					# When starting with NAs, the first value in gaps$lengths 
+					# should represent the start of a good run of data (TRUE). 
+					# As such, the next run of NAs starts with the 3rd entry
+					nextstart = sum(gaps$lengths[1:i]) + 1
+					nextend = sum(gaps$lengths[1:(i+1)])
+					results$Start[j] = nextstart
+					results$End[j] = nextend
+					j = j + 1
+				}
 			}
 		}	# end of else if statement
 	} # end of if (numgaps > 1)
+	
 	results	# return the results dataframe, 2 columns Start and End
 }
 
@@ -495,7 +579,9 @@ calcPercentGape = function (hallData){
 	# Get the row indices for the major gaps that exist now
 	mygaps = gapBounds(hallData)
 	# Create an empty output vector of the same length as the input data. 
-	outputData = numeric(NA, length = length(hallData))
+	outputData = vector(mode = 'numeric', length = length(hallData))
+	outputData[] = NA # Convert all the values to NA to begin with
+	
 	# Now for each section of the input data, calculate the percent gape. This
 	# involves using the entries in mygaps to subset the input data and 
 	# calculate individual percentile values for each contiguous section of
@@ -507,6 +593,9 @@ calcPercentGape = function (hallData){
 		end = mygaps$End[i]
 		# First calculate the upper and lower 1% values of the raw Hall readings
 		myrange = percentileRange(hallData[st:end], percentileLim = 0.01)
+		# I think filtering by the 1% values is no longer necessary with the 
+		# new butteworth filter applied earlier
+#		myrange = range(hallData[st:end])
 		if (myrange[2] < 512){
 			# If the hall effect and magnet are situated so that the value goes 
 			# down as the mussel closes, then calculate % opening using the 
@@ -541,67 +630,26 @@ calcPercentGape = function (hallData){
 cat('Filtering Hall effect data\n')
 df3$Hall1filt = hallFilter(df3$Hall1)
 df3$Hall2filt = hallFilter(df3$Hall2)
-
+cat('Calculating percent gape\n')
 df3$Hall1.percent = calcPercentGape(df3$Hall1filt)
 df3$Hall2.percent = calcPercentGape(df3$Hall2filt)
 
-# Note that some of the sensors need to have portions of their data excised 
-# due to spurious values resulting from sensor dislodgement or other failures
-#if (board == 'SN12'){
-#	# Enter a set of starting and ending time values that you want to cut
-#	# out of the hall effect data for a particular sensor
-#	timevalsCh1 = c( # 	 start times	 	end times
-#					'2015-07-17 00:00', '2015-07-18 12:00',
-#					'2015-07-20 10:00', '2015-07-20 14:00',
-#					'2015-07-20 18:00',	'2015-07-20 21:00',
-#					'2015-07-22 07:00', '2015-07-22 12:00'
-#					)
-#					
-#	timevalsCh2 = c( # start times			end times
-#					'2015-07-19 09:59', '20190-07-24 11:10')						
-#	timevalsCh1 = as.POSIXct(timevalsCh1) # convert to timestamps
-#	# Find the closest matching row in df3 by searching for the smallest time
-#	# difference between each timestamp in timevals and each DateTime in df3
-#	for (i in 1:length(timevals)){
-#		timevals2[i] = which.min(abs(timevals[i] - df3$DateTime))	
-#	}
-#	# Create a data frame by taking the start values and end values of 
-#	# row indices and splitting them into two columns
-#	excisedf = data.frame(Start = timevals2[seq(1,length(timevals2),by=2)],
-#			End = timevals2[seq(2,length(timevals2),by=2)])
-#	
-#	# Go through each set of row indices in excisedf, overwrite spurious data
-#	# as NA's.
-#	for (i in 1:nrow(excisedf)){
-#		# Convert all suspect data to NAs
-#		st = excisedf$Start[i]
-#		end = excisedf$End[i]
-#		df3$Hall1[st:end] = NA
-#	}
-#	# Apply the butterworth filter
-#	df3$Hall1filt = hallFilter(df3$Hall1)
-#	
-#	# Get the row indices for the major gaps that exist now
-#	mygaps = gapBounds(df3$Hall1filt)
-#	# For each entry in mygaps, use the calcPercentGape function to calculate
-#	# the percent gape opening. This will calculate a new baseline closed 
-#	# value after every major gap, which often represents a repositioned 
-#	# magnet or sensor. 
-#	df3$Hall1.percent = NA	# initialize output column
-#	for (i in 1:nrow(mygaps)){
-#		st = mygaps$Start[i]
-#		end = mygaps$End[i]
-#		df3$Hall1.percent[st:end] = calcPercentGape(df3$Hall1filt[st:end])
-#	}	
-#}
+# Update column names in df3 to be more descriptive
+names(df3) = c('POSIXt','DateTimePDT','SerialNumber','Temp1raw','Hall1raw',
+		'Temp2raw','Hall2raw','Temp1calib','Temp2calib','Hall1filt',
+		'Hall2filt','Hall1.percent','Hall2.percent')
+# Also make DateTime column name more descriptive in df2
+names(df2)[2] = 'DateTimePDT'
 
+cat('\aFinished processing input files\n')
 
-#plot(Hall1.percent~DateTime, data = df3[,], type = 'l')
 
 ##***************************************************************************
 # Plot the data streams for mussel 1
 plot2 = TRUE # set to false to only show one mussel's data
 
+#########################################################################
+# Function to plot one or two channels of temperature data from the board
 plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	if (class(start)[1] == 'character'){
 		# Handle character timestamps
@@ -610,8 +658,8 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	}
 	if (class(start)[1] == 'POSIXct' & class(end)[1] == 'POSIXct'){
 		# Find nearest row for each time stamp
-		startrow = which.min(abs(start - df3$DateTime))
-		endrow = which.min(abs(end - df3$DateTime))
+		startrow = which.min(abs(start - df3$DateTimePDT))
+		endrow = which.min(abs(end - df3$DateTimePDT))
 	}
 	if (class(start)[1] == 'numeric'){
 		startrow = start
@@ -625,22 +673,23 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	cols = brewer.pal(3,'Set1')
 # Plot temperature first
 	if (plot2){
-		ylims = range(c(df3$Temp1c[sr:er],df3$Temp2c[sr:er]), na.rm = TRUE)
+		ylims = range(c(df3$Temp1calib[sr:er],df3$Temp2calib[sr:er]), 
+				na.rm = TRUE)
 		ylims[2] = ylims[2] + 2 # bump the upper temp limit up slightly
-		plot(df3$DateTime[sr:er], df3$Temp1c[sr:er], type = 'n', 
+		plot(df3$DateTimePDT[sr:er], df3$Temp1calib[sr:er], type = 'n', 
 				ylab = expression(Temperature*','~degree*C),
 				xlab = 'Time',
 				col = cols[1],
 				ylim = ylims,
 				las = 1)
 		grid()
-		lines(df3$DateTime[sr:er], df3$Temp1c[sr:er], col = cols[1])
-		lines(df3$DateTime[sr:er], df3$Temp2c[sr:er], col = cols[2])	
+		lines(df3$DateTimePDT[sr:er], df3$Temp1calib[sr:er], col = cols[1])
+		lines(df3$DateTimePDT[sr:er], df3$Temp2calib[sr:er], col = cols[2])	
 		legend('topleft', legend = c('Mussel 1','Mussel 2'), lty = 1,
 				col = cols[1:2], bty = 'n')
 	} else {
 		# Else just plot the 1st mussel data
-		plot(df3$DateTime[sr:er], df3$Temp1c[sr:er], type = 'l', 
+		plot(df3$DateTimePDT[sr:er], df3$Temp1calib[sr:er], type = 'l', 
 				ylab = expression(Temperature*','~degree*C),
 				xlab = 'Time',
 				col = cols[1],
@@ -649,163 +698,131 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	}
 }	# end of plotTemps function
 
-
-
-
-#par(mfrow = c(2,1), mar = c(4,5,1,1))
-#cols = brewer.pal(3,'Set1')
-## Plot temperature first
-#if (plot2){
-#	ylims = range(c(df3$Temp1c,df3$Temp2c), na.rm = TRUE)
-#	ylims[2] = ylims[2] + 2 # bump the upper temp limit up slightly
-#	plot(df3$DateTime, df3$Temp1c, type = 'n', 
-#			ylab = expression(Temperature*','~degree*C),
-#			xlab = 'Time',
-#			col = cols[1],
-#			ylim = ylims,
-#			las = 1)
-#	grid()
-#	lines(df3$DateTime, df3$Temp1c, col = cols[1])
-#	lines(df3$DateTime, df3$Temp2c, col = cols[2])	
-#	legend('topleft', legend = c('Mussel 1','Mussel 2'), lty = 1,
-#			col = cols[1:2], bty = 'n')
-#} else {
-#	 # Else just plot the 1st mussel data
-#	plot(df3$DateTime, df3$Temp1c, type = 'l', 
-#			ylab = expression(Temperature*','~degree*C),
-#			xlab = 'Time',
-#			col = cols[1],
-#			ylim = ylims,
-#			las = 1)
-#}
-
-plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:00', 
+##################################################################
+# Function to plot one channel of Hall effect data at a time
+plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30', 
 		endT = '2015-08-06 9:20'){
+	cols = brewer.pal(6,'Set1')
 	# Establish start and end times for the plot
 	startT = as.POSIXct(startT)
 	endT = as.POSIXct(endT)
 	# Find nearest row indices in the data set
-	startTind = which.min(abs(df3$DateTime - startT))
-	endTind = which.min(abs(df3$DateTime - endT))
+	startTind = which.min(abs(df3$DateTimePDT - startT))
+	endTind = which.min(abs(df3$DateTimePDT - endT))
 	ylims = range(-5,110)
 	if (Ch == 1) {
-		plot(df3$DateTime[startTind:endTind], 
+		plot(df3$DateTimePDT[startTind:endTind], 
 				df3$Hall1.percent[startTind:endTind], type = 'n',
 				ylab = 'Gape width, %',
 				xlab = 'Time',
 				col = cols[1],
 				ylim = ylims,
-				las = 1)
+				las = 1,
+				main = 'Mussel 2')
 		grid()
-		lines(df3$DateTime[startTind:endTind],
+		lines(df3$DateTimePDT[startTind:endTind],
 				df3$Hall1.percent[startTind:endTind], col = cols[1])
 	} else if (Ch == 2) {
-		plot(df3$DateTime[startTind:endTind], 
+		plot(df3$DateTimePDT[startTind:endTind], 
 				y = df3$Hall2.percent[startTind:endTind], type = 'n',
 				ylab = 'Gape width, %',
 				xlab = 'Time',
 				col = cols[2],
 				ylim = ylims,
-				las = 1)
+				las = 1,
+				main = 'Mussel 2')
 		grid()
-		lines(df3$DateTime[startTind:endTind],
+		lines(df3$DateTimePDT[startTind:endTind],
 				df3$Hall2.percent[startTind:endTind], col = cols[2])
+	}
+}
+################################################################################
+## Plot the accelerometer + magnetometer data
+
+plotAccelMag = function(df, Ch = 1, startT = '2015-07-15 07:30', 
+		endT = '2015-08-06 9:20'){
+	cols = brewer.pal(6,'Set1')
+	# Establish start and end times for the plot
+	startT = as.POSIXct(startT)
+	endT = as.POSIXct(endT)
+	# Find nearest row indices in the data set
+	startTind = which.min(abs(df$DateTimePDT - startT))
+	endTind = which.min(abs(df$DateTimePDT - endT))
+	yrange = c(-32767, 32767) # The accel/mag sensor range should be
+								# the limits of a 16-bit signed integer
+	if (Ch == 1) {
+		plot(df$DateTimePDT[startTind:endTind], df$a1.x[startTind:endTind],
+				type = 'n',
+				ylim = yrange,
+				ylab = 'Accelerometer', 
+				xlab = 'Time',
+				main = 'Mussel 1')
+		rect(par()$usr[1],par()$usr[3],par()$usr[2],par()$usr[4],col = 'grey90')
+		grid()
+		lines(df$DateTimePDT[startTind:endTind], df$a1.x[startTind:endTind], 
+				col = cols[1])
+		lines(df$DateTimePDT[startTind:endTind], df$a1.y[startTind:endTind], 
+				col = cols[2])
+		lines(df$DateTimePDT[startTind:endTind], df$a1.z[startTind:endTind], 
+				col = cols[3])
+		lines(df$DateTimePDT[startTind:endTind], df$m1.x[startTind:endTind], 
+				col = cols[4])
+		lines(df$DateTimePDT[startTind:endTind], df$m1.y[startTind:endTind], 
+				col = cols[5])
+		lines(df$DateTimePDT[startTind:endTind], df$m1.z[startTind:endTind], 
+				col = cols[6])
+		legend('top', legend = c('accel.x','accel.y','accel.z',
+						'mag.x','mag.y','mag.z'),
+				col = cols, lty = 1, lwd = 2, bty = 'n', horiz = TRUE)
+	}
+	else if (Ch == 2) {
+		plot(df$DateTimePDT[startTind:endTind], df$a2.x[startTind:endTind],
+				type = 'n',
+				ylim = yrange,
+				ylab = 'Accelerometer', 
+				xlab = 'Time',
+				main = 'Mussel 2')
+		rect(par()$usr[1],par()$usr[3],par()$usr[2],par()$usr[4],col = 'grey90')
+		grid()
+		lines(df$DateTimePDT[startTind:endTind], df$a2.x[startTind:endTind], 
+				col = cols[1])
+		lines(df$DateTimePDT[startTind:endTind], df$a2.y[startTind:endTind], 
+				col = cols[2])
+		lines(df$DateTimePDT[startTind:endTind], df$a2.z[startTind:endTind], 
+				col = cols[3])
+		lines(df$DateTimePDT[startTind:endTind], df$m2.x[startTind:endTind], 
+				col = cols[4])
+		lines(df$DateTimePDT[startTind:endTind], df$m2.y[startTind:endTind], 
+				col = cols[5])
+		lines(df$DateTimePDT[startTind:endTind], df$m2.z[startTind:endTind], 
+				col = cols[6])
+		legend('top', legend = c('accel.x','accel.y','accel.z',
+						'mag.x','mag.y','mag.z'),
+				col = cols, lty = 1, lwd = 2, bty = 'n', horiz = TRUE)
 	}
 }
 
 
-# Plot the hall effect sensor data
-#if (plot2) {
-#	ylims = range(-5,110)
-#	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
-#			ylab = 'Gape width, %',
-#			xlab = 'Time',
-#			col = cols[1],
-#			ylim = ylims,
-#			las = 1)
-#	grid()
-#	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
-#	lines(df3$DateTime, df3$Hall2.percent, col = cols[2])
-##	legend('topleft', legend = c('Mussel 1','Mussel 2'), col = cols[1:2],
-##			lty = 1)
-#} else {
-#	# Else just plot the 1st mussel data
-#	ylims = range(-5,110)
-#	plot(df3$DateTime, df3$Hall1.percent, type = 'n',
-#			ylab = 'Gape width, %',
-#			xlab = 'Time',
-#			col = cols[1],
-#			ylim = ylims,
-#			las = 1)
-#	grid()
-#	lines(df3$DateTime, df3$Hall1.percent, col = cols[1])
-#}
+################################################################################
+saveMe = FALSE
+# Only execute this when you're really ready to save the cleaned data
+if (saveMe == TRUE){
 
-## Plot the accelerometer + magnetometer data
-#yrange = range(c(df$a1.x,df$a1.y,df$a1.z,df$m1.x,df$m1.y,df$m1.z),na.rm=TRUE)
-#plot(df$DateTime, df$a1.x, type = 'l',
-#		ylim = yrange,
-#		ylab = 'Accelerometer',
-#		xlab = 'Time'
-#		)
-#lines(df$DateTime, df$a1.y, col = 2)
-#lines(df$DateTime, df$a1.z, col = 3)
-#legend('top', legend = c('accel.x','accel.y','accel.z'),
-#		col = 1:3, lty = 1, bty = 'n', horiz = TRUE)
-#plot(df$DateTime, df$m1.x, type = 'l',
-#		col = 4,
-#		ylim = yrange,
-#		ylab = 'Magnetometer',
-#		xlab = 'Time')
-#lines(df$DateTime, df$m1.y, col = 5)
-#lines(df$DateTime, df$m1.z, col = 6)
-#legend('top', legend = c('mag.x','mag.y','mag.z'),
-#		col = 4:6, lty = 1, bty = 'n', horiz = TRUE)
-#
-###****************************
-## Plot the data streams for mussel 2
-##par(mfrow = c(4,1))
-## Plot temperature first
-#plot(df$DateTime, df$Temp2, type = 'l', 
-#		ylab = 'Temperature, C',
-#		xlab = 'Time',
-#		col = cols[2],
-#		las = 1)
-#plot(df$DateTime, df$Hall2.percent, type = 'l',
-#		ylab = 'Gape width, %',
-#		xlab = 'Time',
-#		col = cols[2],
-#		las = 1)
-
-
-## Plot the magnetometer data
-#mystart = as.POSIXct('2015-07-17 00:00', tz = 'PST8PDT')
-#myend = as.POSIXct('2015-07-19 9:30', tz = 'PST8PDT')
-#mystart = which.min(abs(df$DateTime - mystart))
-#myend = which.min(abs(df$DateTime - myend))
-#
-#yrange = range(c(df$m1.x,df$m1.y,df$m1.z,df$m1.x,df$m1.y,df$m1.z), na.rm=TRUE)
-#plot(df$DateTime[mystart:myend], df$m1.x[mystart:myend], type = 'l',
-#		ylim = yrange,
-#		ylab = 'Magnetometer',
-#		xlab = 'Time'
-#)
-#lines(df$DateTime[mystart:myend], df$m1.y[mystart:myend], col = 2)
-#lines(df$DateTime[mystart:myend], df$m1.z[mystart:myend], col = 3)
+	# Write out the 1-Hz temperature and hall effect data to its own file.
+	write.csv(df3, file = paste0(sn,'_all_TempHall_filtered.csv'), 
+			row.names = FALSE)
+	# Write out the 4-Hz accel/magnetometer data to its own file. 
+	write.csv(df2, file = paste0(sn,'_all_AccelMag_raw.csv'),
+			row.names = FALSE)
+	cat('\aSaved files as\n')
+	cat(paste0(sn,'_all_TempHall_filtered.csv'),'\n')
+	cat(paste0(sn,'_all_AccelMag_raw.csv'),'\n')
+}
+################################################################################
 
 
 
-#legend('top', legend = c('accel.x','accel.y','accel.z'),
-#		col = 1:3, lty = 1, bty = 'n', horiz = TRUE)
-#plot(df$DateTime, df$m2.x, type = 'l',
-#		col = 4,
-#		ylim = yrange,
-#		ylab = 'Magnetometer',
-#		xlab = 'Time')
-#lines(df$DateTime, df$m2.y, col = 5)
-#lines(df$DateTime, df$m2.z, col = 6)
-#legend('top', legend = c('mag.x','mag.y','mag.z'),
-#		col = 4:6, lty = 1, bty = 'n', horiz = TRUE)
+
 
 
 
