@@ -7,7 +7,7 @@
 
 # Enter the serial number of the board files you want to process below:
 ##########################################
-board = 'SN03'
+board = 'SN13'
 ##########################################
 
 
@@ -416,90 +416,68 @@ gapBounds = function (values){
 	# If the first entry in gaps is TRUE, this indicates that the data started
 	# with NA values.
 	if (gaps$values[1] == TRUE) {
-		startNA = TRUE
+		startNA = TRUE	# Data started with NAs
 	} else {	
 		startNA = FALSE	 # Data started with real values
 	}
+	# If the last entry in gaps is TRUE, the data end on NAs
+	if (gaps$values[length(gaps$values)] == TRUE){
+		endNA = TRUE	# Data ends with NAs
+	} else {
+		endNA = FALSE	# Data ends with real values
+	}
 	
-	# The number of gaps with value = TRUE is the number of good runs of data
+	# The number of gaps with value == TRUE is the number of good runs of data
 	# and gaps with value == FALSE are the starts of runs of NAs. This will
 	# get the number of FALSE (negated to TRUE) values in gaps. A dataset
-	# ending in good data will typically have a last entry in gaps of FALSE 
+	# ending in good data will have a last entry in gaps of FALSE. 
 	numgaps = sum(!gaps$values)
+	
 	# Create the output data frame
 	results = data.frame(Start = integer(numgaps), End = integer(numgaps))
-
-	# The first entry should always be 1 (1st row) for data that start with 
-	# real values. If there are no gaps, the
-	# contents of gaps$lengths will just be the length of the values vector
-	results$Start[1] = 1
-	results$End[1] = gaps$lengths[1]
-	# However, if the dataset starts with NAs, the first entry in gaps will
-	# be the index of the first good data, while the 2nd entry will be the 
-	# start of the next stretch of NAs
-	if (startNA) {
+	
+	if (!startNA) {
+		# If startNA == FALSE (started on good data, the first entry should 
+		# always be 1 (1st row) 
+		# If there are no gaps, the
+		# contents of gaps$lengths will just be the length of the values vector
+		results$Start[1] = 1
+		results$End[1] = gaps$lengths[1]
+	} else if (startNA){
+		# However, if the dataset starts with NAs, the first entry in gaps will
+		# be the index of the first good data, while the 2nd entry will be the 
+		# start of the next stretch of NAs
 		results$Start[1] = gaps$lengths[1]+1
 		results$End[1] = sum(gaps$lengths[1:2])
 	}
-	
+
 	# If there is more than 1 entry in gaps$lengths, process the other gaps
 	j = 2; # counter
 	if (numgaps > 1){
-		if (numgaps %% 2 == 0){
-			if (!startNA){		
-				# Even number of gaps, dataset ends on NAs
-				for (i in seq(2, length(gaps$lengths)-1, by = 2)){
-					nextstart = sum(gaps$lengths[1:i]) + 1
-					nextend = sum(gaps$lengths[1:(i+1)])
-					results$Start[j] = nextstart
-					results$End[j] = nextend
-					j = j + 1
-				}
-			} else if (startNA){
-				# Even number of gaps, dataset started on NAs. The 1st entry
-				# is taken care of above, so we start with the 3rd entry which
-				# should be the next stretch of good data (i.e. it should be
-				# a TRUE entry in gaps$values
-				for (i in seq(3, length(gaps$lengths)-1, by = 2)){
-					nextstart = sum(gaps$lengths[1:i]) + 1
-					nextend = sum(gaps$lengths[1:(i+1)])
-					results$Start[j] = nextstart
-					results$End[j] = nextend
-					j = j + 1
-				}
-			}
-		} else if (numgaps %% 2 != 0){
-			# Odd number of gaps
-			if (!startNA){
-				for (i in seq(2,length(gaps$lengths), by = 2)){
-					# The first value in gaps$lengths should represent the end 
-					# of a
-					# a good run of data, and the 2nd value should represent the
-					# length of a run of NAs. As such, the start of the next run
-					# of good data is the sum of all the previous gaps$lengths 
-					# values so far
-					nextstart = sum(gaps$lengths[1:i]) + 1
-					nextend = sum(gaps$lengths[1:(i+1)])
-					results$Start[j] = nextstart
-					results$End[j] = nextend
-					j = j + 1
-				}
-			} else if (startNA){
-				# Handle the case where the data stream started with NA values
-				for (i in seq(3,length(gaps$lengths), by = 2)){
-					# When starting with NAs, the first value in gaps$lengths 
-					# should represent the start of a good run of data (TRUE). 
-					# As such, the next run of NAs starts with the 3rd entry
-					nextstart = sum(gaps$lengths[1:i]) + 1
-					nextend = sum(gaps$lengths[1:(i+1)])
-					results$Start[j] = nextstart
-					results$End[j] = nextend
-					j = j + 1
-				}
-			}
-		}	# end of else if statement
+		if (!startNA & endNA){
+			# If the dataset ends on NAs (TRUE last), truncate gapind by 1
+			gapind = seq(2,length(gaps$lengths)-1, by = 2)
+		} else if (!startNA & !endNA) {
+			# If the dataset ends on good values (FALSE last)
+			gapind = seq(2,length(gaps$lengths), by = 2)
+		} else if (startNA & endNA) {
+			# If dataset starts on NAs (TRUE 1st) and ends on NAs (TRUE last)
+			gapind = seq(3, length(gaps$lengths)-1, by = 2)
+		} else if (startNA & !endNA) {
+			# If dataset starts on NAs (TRUE 1st) and ends on good data 
+			# (FALSE last)
+			gapind = seq(3, length(gaps$lengths), by = 2)
+		}	
+		# Step through the rest of the gaps object to find the start and end
+		# points of each stretch of good data. 
+		for (i in gapind){
+			nextstart = sum(gaps$lengths[1:i]) + 1
+			nextend = sum(gaps$lengths[1:(i+1)])
+			results$Start[j] = nextstart
+			results$End[j] = nextend
+			j = j + 1
+		}
 	} # end of if (numgaps > 1)
-	
 	results	# return the results dataframe, 2 columns Start and End
 }
 
@@ -671,7 +649,7 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 	er = endrow
 
 	cols = brewer.pal(3,'Set1')
-# Plot temperature first
+
 	if (plot2){
 		ylims = range(c(df3$Temp1calib[sr:er],df3$Temp2calib[sr:er]), 
 				na.rm = TRUE)
@@ -681,7 +659,8 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 				xlab = 'Time',
 				col = cols[1],
 				ylim = ylims,
-				las = 1)
+				las = 1,
+				main = sn)
 		grid()
 		lines(df3$DateTimePDT[sr:er], df3$Temp1calib[sr:er], col = cols[1])
 		lines(df3$DateTimePDT[sr:er], df3$Temp2calib[sr:er], col = cols[2])	
@@ -694,7 +673,8 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 				xlab = 'Time',
 				col = cols[1],
 				ylim = ylims,
-				las = 1)
+				las = 1,
+				main = sn)
 	}
 }	# end of plotTemps function
 
@@ -718,7 +698,7 @@ plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30',
 				col = cols[1],
 				ylim = ylims,
 				las = 1,
-				main = 'Mussel 2')
+				main = paste0(sn,' Mussel 1'))
 		grid()
 		lines(df3$DateTimePDT[startTind:endTind],
 				df3$Hall1.percent[startTind:endTind], col = cols[1])
@@ -730,7 +710,7 @@ plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30',
 				col = cols[2],
 				ylim = ylims,
 				las = 1,
-				main = 'Mussel 2')
+				main = paste0(sn,' Mussel 2'))
 		grid()
 		lines(df3$DateTimePDT[startTind:endTind],
 				df3$Hall2.percent[startTind:endTind], col = cols[2])
@@ -754,9 +734,9 @@ plotAccelMag = function(df, Ch = 1, startT = '2015-07-15 07:30',
 		plot(df$DateTimePDT[startTind:endTind], df$a1.x[startTind:endTind],
 				type = 'n',
 				ylim = yrange,
-				ylab = 'Accelerometer', 
+				ylab = 'Accelerometer & Magnetometer', 
 				xlab = 'Time',
-				main = 'Mussel 1')
+				main = paste0(sn,' Mussel 1'))
 		rect(par()$usr[1],par()$usr[3],par()$usr[2],par()$usr[4],col = 'grey90')
 		grid()
 		lines(df$DateTimePDT[startTind:endTind], df$a1.x[startTind:endTind], 
@@ -779,9 +759,9 @@ plotAccelMag = function(df, Ch = 1, startT = '2015-07-15 07:30',
 		plot(df$DateTimePDT[startTind:endTind], df$a2.x[startTind:endTind],
 				type = 'n',
 				ylim = yrange,
-				ylab = 'Accelerometer', 
+				ylab = 'Accelerometer & Magnetometer', 
 				xlab = 'Time',
-				main = 'Mussel 2')
+				main = paste0(sn,' Mussel 2'))
 		rect(par()$usr[1],par()$usr[3],par()$usr[2],par()$usr[4],col = 'grey90')
 		grid()
 		lines(df$DateTimePDT[startTind:endTind], df$a2.x[startTind:endTind], 
@@ -801,6 +781,20 @@ plotAccelMag = function(df, Ch = 1, startT = '2015-07-15 07:30',
 				col = cols, lty = 1, lwd = 2, bty = 'n', horiz = TRUE)
 	}
 }
+
+###############################################################
+# Plot the data to check integrity
+windows()
+plotTemps(df3, plot2 = TRUE)
+windows()
+plotHall(df3,Ch=1)
+windows()
+plotHall(df3,Ch=2)
+windows()
+plotAccelMag(df2,Ch=1)
+windows()
+plotAccelMag(df2,Ch=2)
+##############################################################
 
 
 ################################################################################
