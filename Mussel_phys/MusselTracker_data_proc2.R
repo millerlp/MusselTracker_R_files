@@ -7,7 +7,7 @@
 
 # Enter the serial number of the board files you want to process below:
 ##########################################
-board = 'SN14'
+board = 'SN11'
 ##########################################
 
 
@@ -688,7 +688,7 @@ plotTemps = function(df3, start = 1, end = nrow(df3), plot2 = TRUE){
 ##################################################################
 # Function to plot one channel of Hall effect data at a time
 plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30', 
-		endT = '2015-08-06 9:20'){
+		endT = '2015-08-06 9:20', raw = FALSE){
 	cols = brewer.pal(6,'Set1')
 	# Establish start and end times for the plot
 	startT = as.POSIXct(startT)
@@ -696,10 +696,17 @@ plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30',
 	# Find nearest row indices in the data set
 	startTind = which.min(abs(df3$DateTimePDT - startT))
 	endTind = which.min(abs(df3$DateTimePDT - endT))
-	ylims = range(-5,110)
+	
 	if (Ch == 1) {
+		if (raw) {
+			temp = df3$Hall1raw[startTind:endTind]
+			ylims = range(temp, na.rm = TRUE)
+		} else {
+			temp = df3$Hall1.percent[startTind:endTind]
+			ylims = range(-5,110)
+		}
 		plot(df3$DateTimePDT[startTind:endTind], 
-				df3$Hall1.percent[startTind:endTind], type = 'n',
+				temp, type = 'n',
 				ylab = 'Gape width, %',
 				xlab = 'Time',
 				col = cols[1],
@@ -708,10 +715,17 @@ plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30',
 				main = paste0(sn,' Mussel 1'))
 		grid()
 		lines(df3$DateTimePDT[startTind:endTind],
-				df3$Hall1.percent[startTind:endTind], col = cols[1])
+				temp, col = cols[1])
 	} else if (Ch == 2) {
+		if (raw) {
+			temp = df3$Hall2raw[startTind:endTind]
+			ylims = range(temp, na.rm = TRUE)
+		} else {
+			temp = df3$Hall2.percent[startTind:endTind]
+			ylims = range(-5,110)
+		}
 		plot(df3$DateTimePDT[startTind:endTind], 
-				y = df3$Hall2.percent[startTind:endTind], type = 'n',
+				y = temp, type = 'n',
 				ylab = 'Gape width, %',
 				xlab = 'Time',
 				col = cols[2],
@@ -720,7 +734,7 @@ plotHall = function(df3, Ch = 1, startT = '2015-07-15 07:30',
 				main = paste0(sn,' Mussel 2'))
 		grid()
 		lines(df3$DateTimePDT[startTind:endTind],
-				df3$Hall2.percent[startTind:endTind], col = cols[2])
+				temp, col = cols[2])
 	}
 }
 ################################################################################
@@ -820,10 +834,3 @@ if (saveMe == TRUE){
 	cat(paste0(sn,'_all_AccelMag_raw.csv'),'\n')
 }
 ################################################################################
-
-
-
-
-
-
-
