@@ -1,14 +1,16 @@
 # AccelMag_calibrations.R
-# A script to load accelerometer and magnetometer calibration files, clean the
-# data, and calculate offset + scaling factors and a rotation matrix that can 
-# be used to properly orient the LSM303D sensor and mussel in space.   
+# A script to load accelerometer and magnetometer calibration files and clean 
+# the data of any spurious values, usually resulting from fast movements causing
+# acceleration > 1g, or swinging the magentometer near a neighboring magnet.
+# The output is a shorter data file with the same 7 columns as the raw input
+# files.
 # Author: Luke Miller Aug 24, 2015
 ###############################################################################
 
 ######################################################
 # Specify which board and mussel you want to work with here:
-mussel = "2" # Specify the mussel, either 1 or 2, as a string
-sn = "SN01"	# Specify the board serial number
+#mussel = "2" # Specify the mussel, either 1 or 2, as a string
+#sn = "SN01"	# Specify the board serial number
 #####################################################
 
 setwd("D:/R/Mussel_phys/")
@@ -176,6 +178,9 @@ filterLoop = function(dat1){
 			cat(colnames(df2)[-1])
 			cat('\n')
 			answer2 = scan(what = character(), n = 1 )
+			cat('Start clicking on points to be removed\n')
+			cat('Right-click and choose "Stop" to finish\n')
+			cat('removing points on this plot.\n')
 			# Use filterPoints on the x and y accel data
 			# This overwrites the original copy in df2
 			df2 = filterPoints(df2, axisA = answer1, axisB = answer2)
@@ -201,6 +206,12 @@ filterLoop = function(dat1){
 ###############################################################################
 # Utilize the functions above to have the user filter the bad data points
 filteredData = filterLoop(df) 
+# If you accidentally error out of this script, you can pick up where you left
+# off by getting the values from 'filtereData' and writing them into 'df',
+# and then executing the line above again, which will allow more filtering.
+# In this case you'd have to run the save-file code below manually after you
+# finish filtering. 
+
 ###############################################################################
 
 
@@ -216,9 +227,9 @@ if (answer == 'y') {
 	write.table(filteredData, 
 			file = paste0("Filtered_",basename(datfile)), 
 			row.names = FALSE, append = TRUE, sep = ",")
+	cat('Wrote file ',paste0('Filtered_',basename(datfile)),'\n')
+	cat('To ',getwd(),'\n')
 }
-cat('Wrote file ',paste0('Filtered_',basename(datfile)),'\n')
-cat('To ',getwd(),'\n')
 
 
 
