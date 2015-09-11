@@ -180,7 +180,7 @@ filterLoop = function(dat1){
 			answer2 = scan(what = character(), n = 1 )
 			cat('Start clicking on points to be removed\n')
 			cat('Right-click and choose "Stop" to finish\n')
-			cat('removing points on this plot.\n')
+			cat('removing points on this plot.n\n')
 			# Use filterPoints on the x and y accel data
 			# This overwrites the original copy in df2
 			df2 = filterPoints(df2, axisA = answer1, axisB = answer2)
